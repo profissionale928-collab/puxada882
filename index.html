@@ -1,0 +1,86 @@
+
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Busca de Empresas MEI - CNPJjá</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Busca de Empresas MEI</h1>
+            <p>Encontre empresas MEI criadas em um período específico</p>
+        </header>
+
+        <main>
+            <section class="search-section">
+                <h2>Filtros de Busca</h2>
+                <form id="searchForm">
+                    <div class="form-group">
+                        <label for="dataInicio">Data de Abertura - A partir de:</label>
+                        <input type="date" id="dataInicio" name="dataInicio" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="dataFim">Data de Abertura - Até:</label>
+                        <input type="date" id="dataFim" name="dataFim" required>
+                    </div>
+
+                    <button type="submit" class="btn-search">Buscar Empresas</button>
+                    <button type="button" id="btnExportManychat" class="btn-export hidden">Exportar Contatos (Manychat)</button>
+                    <button type="button" id="btnExportEmails" class="btn-export hidden">Exportar Emails</button>
+                    <button type="button" id="btnExportPhones" class="btn-export hidden">Exportar Telefones</button>
+                </form>
+            </section>
+
+            <section class="results-section" id="resultsSection">
+                <div id="loadingSpinner" class="loading-spinner hidden">
+                    <div class="spinner"></div>
+                    <p>Carregando dados...</p>
+                </div>
+
+                <div id="errorMessage" class="error-message hidden"></div>
+                <div id="debugInfo" class="debug-info hidden">
+                    <h3>Informações de Debug (Apenas para Diagnóstico)</h3>
+                    <p><strong>URL da Requisição:</strong> <span id="requestUrl"></span></p>
+                    <p><strong>Resposta da API:</strong> <span id="apiResponse"></span></p>
+                </div>
+
+                <div id="resultsContainer" class="results-container hidden">
+                    <h2>Resultados da Busca</h2>
+                    <p id="resultCount" class="result-count"></p>
+                    <div class="table-wrapper">
+                        <table id="resultsTable" class="results-table">
+                            <thead>
+                                <tr>
+                                    <th>CNPJ</th>
+                                    <th>Razão Social</th>
+                                    <th>Email</th>
+                                    <th>Telefone</th>
+                                    <th>Data de Abertura</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableBody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="noResults" class="no-results hidden">
+                    <p>Nenhuma empresa MEI encontrada para o período especificado.</p>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>&copy; 2025 Busca de Empresas MEI. Dados fornecidos pela API CNPJjá.</p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

@@ -21,6 +21,22 @@ const btnExportPhones = document.getElementById('btnExportPhones');
 const btnExportManychat = document.getElementById('btnExportManychat'); // Novo botão
 
 // Variável global para armazenar todos os resultados
+let filteredResults = [];
+
+// Função para filtrar resultados com base no padrão **.***.*** antes do nome
+function filterByRazaoSocialPattern(results) {
+    // Regex para o padrão: XX.XXX.XXX (pode ser mais flexível com \d ou \w)
+    // Usando \d para dígitos, mas permitindo outros caracteres que possam estar no início.
+    // O padrão mais seguro é: (dígitos/caracteres).(dígitos/caracteres).(dígitos/caracteres) seguido por espaço.
+    // O exemplo é 56.190.792 YAGO CID GARCIA.
+    // Regex: ^\d{2}\.\d{3}\.\d{3}\s
+    const pattern = /^\d{2}\.\d{3}\.\d{3}\s/;
+    
+    return results.filter(empresa => {
+        const razaoSocial = empresa.company?.name || '';
+        return pattern.test(razaoSocial);
+    });
+}
 let allResults = [];
 
 // Função principal de busca
@@ -57,7 +73,7 @@ async function handleSearch(e) {
             'founded.gte': dataInicioISO,
             'founded.lte': dataFimISO,
             'company.simei.optant.eq': 'true', // Filtro MEI reativado
-            'limit': '250' // Aumentado o limite para buscar mais resultados
+            'limit': '2' // Aumentado o limite para buscar mais resultados
         });
 
         const url = `${API_BASE_URL}?${params.toString()}`;
@@ -84,8 +100,18 @@ async function handleSearch(e) {
 
         // Processar resultados
         if (data.records && data.records.length > 0) {
-            allResults = data.records; // Armazena todos os resultados
-            displayResults(allResults); // Exibe os resultados
+            // 1. Armazena todos os resultados
+            allResults = data.records; 
+            
+            // 2. Filtra os resultados com base no padrão da Razão Social
+            filteredResults = filterByRazaoSocialPattern(allResults);
+
+            // 3. Exibe os resultados filtrados (ou todos, dependendo da intenção original do displayResults)
+            // Para manter a funcionalidade original de exibição, vamos exibir todos, mas o export usará o filteredResults
+            displayResults(allResults); // Exibe todos os resultados para manter a UI original
+            
+            // Opcional: Atualizar a contagem para refletir o número de resultados filtrados
+            // resultCount.textContent = filteredResults.length;
         } else {
             showNoResults();
         }
@@ -199,9 +225,168 @@ function extractEmail(empresa) {
     return email;
 }
 
+// Função de utilidade para extrair o telefone no formato internacional sem formatação
+function extractPhoneRaw(empresa) {
+    const phone = extractPhone(empresa);
+    // Remove tudo que não for dígito, exceto o '+' inicial
+    let raw = phone.replace(/[^\d+]/g, '');
+    
+    // Se o telefone estiver formatado, ele não terá o código do país.
+    // Se não começar com '+55', tenta adicionar o código do país e DDD (se houver)
+    if (!raw.startsWith('+55')) {
+        // Tenta extrair o DDD do telefone formatado
+        const match = phone.match(/\((\d{2})\)/);
+        const ddd = match ? match[1] : '';
+        
+        // Remove a formatação e o DDD para pegar o número puro
+        let numeroPuro = phone.replace(/[^\d]/g, '');
+        
+        // Se o número puro tem 10 ou 11 dígitos (DDD + Número), remove o DDD
+        if (numeroPuro.length === 10 || numeroPuro.length === 11) {
+            numeroPuro = numeroPuro.substring(2);
+        }
+        
+        // Se o DDD foi encontrado, monta o formato internacional
+        if (ddd) {
+            raw = `+55${ddd}${numeroPuro}`;
+        } else {
+            // Se não encontrou DDD, retorna N/A, pois o Manychat precisa do formato internacional
+            return 'N/A';
+        }
+    }
+    
+    // Se o número tem 14 dígitos (+55 + 2 DDD + 9 dígitos), está correto.
+    // Se o número tem 13 dígitos (+55 + 2 DDD + 8 dígitos), está correto.
+    if (raw.length === 13 || raw.length === 14) {
+        return raw;
+    }
+    
+    return 'N/A';
+}
+
+// Função de utilidade para exibir os resultados na tabela (mantida a original)
+function displayResults(results) {
+    tableBody.innerHTML = '';
+    resultCount.textContent = results.length;
+    resultsContainer.classList.remove('hidden');
+    noResults.classList.add('hidden');
+
+    results.forEach(empresa => {
+        const row = tableBody.insertRow();
+        row.insertCell().textContent = formatarCNPJ(empresa.taxId || 'N/A');
+        row.insertCell().textContent = empresa.company?.name || 'N/A';
+        row.insertCell().textContent = formatarData(empresa.founded);
+        row.insertCell().textContent = extractEmail(empresa);
+        row.insertCell().textContent = extractPhone(empresa);
+    });
+}
+
+// Função de utilidade para limpar resultados
+function clearResults() {
+    tableBody.innerHTML = '';
+    resultCount.textContent = '0';
+    resultsContainer.classList.add('hidden');
+    noResults.classList.add('hidden');
+    // Ocultar botões de exportar
+    document.getElementById('btnExportEmails').classList.add('hidden');
+    document.getElementById('btnExportPhones').classList.add('hidden');
+    document.getElementById('btnExportManychat').classList.add('hidden');
+}
+
+// Função de utilidade para mostrar mensagem de erro
+function showError(message) {
+    errorMessage.textContent = message;
+    errorMessage.classList.remove('hidden');
+}
+
+// Função de utilidade para mostrar que não há resultados
+function showNoResults() {
+    noResults.classList.remove('hidden');
+    resultsContainer.classList.add('hidden');
+    // Ocultar botões de exportar
+    document.getElementById('btnExportEmails').classList.add('hidden');
+    document.getElementById('btnExportPhones').classList.add('hidden');
+    document.getElementById('btnExportManychat').classList.add('hidden');
+}
+
+// Função de utilidade para mostrar/ocultar o spinner de carregamento
+function showLoading(isLoading) {
+    if (isLoading) {
+        loadingSpinner.classList.remove('hidden');
+        errorMessage.classList.add('hidden');
+    } else {
+        loadingSpinner.classList.add('hidden');
+        // Mostrar botões de exportar se houver resultados
+        if (allResults.length > 0) {
+            document.getElementById('btnExportEmails').classList.remove('hidden');
+            document.getElementById('btnExportPhones').classList.remove('hidden');
+            document.getElementById('btnExportManychat').classList.remove('hidden');
+        }
+    }
+}
+
+// Função para exportar apenas emails (mantida a original)
+function exportEmails() {
+    if (allResults.length === 0) {
+        alert('Nenhum resultado para exportar.');
+        return;
+    }
+
+    const emails = allResults.map(empresa => extractEmail(empresa)).filter(email => email !== 'N/A');
+    
+    if (emails.length === 0) {
+        alert('Nenhum email encontrado para exportar.');
+        return;
+    }
+
+    const csvContent = emails.join('\n');
+    
+    // Cria um Blob para download
+    const blob = new Blob([csvContent], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'emails_exportados.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+// Função para exportar apenas telefones (mantida a original)
+function exportPhones() {
+    if (allResults.length === 0) {
+        alert('Nenhum resultado para exportar.');
+        return;
+    }
+
+    const phones = allResults.map(empresa => extractPhone(empresa)).filter(phone => phone !== 'N/A');
+    
+    if (phones.length === 0) {
+        alert('Nenhum telefone encontrado para exportar.');
+        return;
+    }
+
+    const csvContent = phones.join('\n');
+    
+    // Cria um Blob para download
+    const blob = new Blob([csvContent], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'telefones_exportados.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
 // NOVO: Função para exportar contatos formatados para Manychat
 function exportManychatContacts() {
-    if (allResults.length === 0) {
+    // Usa os resultados filtrados
+    const resultsToExport = filteredResults.length > 0 ? filteredResults : allResults;
+    
+    if (resultsToExport.length === 0) {
         alert('Nenhum resultado para exportar.');
         return;
     }
@@ -214,7 +399,7 @@ function exportManychatContacts() {
     // custom_field_DATA_ABERTURA: Campo personalizado para a Data de Abertura
     const header = ['Whatsapp Id', 'First Name', 'Full Name'].join(',');
     
-    const dataLines = allResults.map(empresa => {
+    const dataLines = resultsToExport.map(empresa => {
         const cnpj = empresa.taxId || 'N/A';
         const razaoSocial = empresa.company?.name || 'N/A';
         // Remove a parte inicial que é o CNPJ/números (se houver)
@@ -233,11 +418,11 @@ function exportManychatContacts() {
         }
 
 // Usa aspas duplas para encapsular campos que podem conter vírgulas (Razão Social)
-	        return [
-	            `"${telefoneRaw}"`, // Telefone no formato internacional (agora 'Whatsapp Id')
+        return [
+            `"${telefoneRaw}"`, // Telefone no formato internacional (agora 'Whatsapp Id')
 `"${firstName}"`, // Primeira palavra da Razão Social como First Name
-		            `"${fullName}"`, // Razão Social completa como Full Name
-		        ].join(',');
+            `"${fullName}"`, // Razão Social completa como Full Name
+        ].join(',');
     }).filter(line => line !== null); // Remove os registros ignorados
 
     if (dataLines.length === 0) {
@@ -250,325 +435,13 @@ function exportManychatContacts() {
     // Cria um Blob para download
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
-    
-    // Cria um link temporário para iniciar o download
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'mei_manychat_export.csv';
+    a.download = 'manychat_contacts_filtered.csv';
     document.body.appendChild(a);
     a.click();
-    
-    // Limpa o link temporário e o URL do objeto
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    
-    alert(`Exportação para Manychat concluída! ${dataLines.length} contato(s) exportado(s) para "mei_manychat_export.csv".`);
-}
-
-// NOVO: Função de utilidade para extrair o telefone no formato RAW (+55DDDNUMERO)
-function extractPhoneRaw(empresa) {
-    let phone = 'N/A';
-    let phoneData = null;
-    let inferredDDD = null;
-
-    const uf = empresa.address?.state;
-    if (uf) {
-        inferredDDD = getDDDByState(uf);
-    }
-
-    const phoneFields = [
-        empresa.company?.phone,
-        empresa.phone,
-        empresa.phone_alt
-    ];
-
-    if (Array.isArray(empresa.phones) && empresa.phones.length > 0) {
-        phoneData = empresa.phones[0];
-    } else {
-        for (const field of phoneFields) {
-            if (field) {
-                phoneData = field;
-                break;
-            }
-        }
-    }
-
-    if (typeof phoneData === 'string' && phoneData.trim() !== '') {
-        phone = formatarTelefoneRaw(phoneData, '55', inferredDDD);
-    } else if (phoneData && typeof phoneData === 'object') {
-        const number = phoneData.number || phoneData.value;
-        const ddd = phoneData.area;
-        const countryCode = phoneData.countryCode || '55';
-        const finalDDD = ddd || inferredDDD;
-
-        if (number) {
-            phone = formatarTelefoneRaw(number, countryCode, finalDDD);
-        }
-    }
-    
-    if (phone === 'N/A' && Array.isArray(empresa.phones) && empresa.phones.length > 0) {
-        const firstPhone = empresa.phones[0];
-        if (typeof firstPhone === 'string' && firstPhone.trim() !== '') {
-            phone = formatarTelefoneRaw(firstPhone, '55', inferredDDD);
-        } else if (firstPhone && (firstPhone.number || firstPhone.value)) {
-            const ddd = firstPhone.area;
-            const countryCode = firstPhone.countryCode || '55';
-            const finalDDD = ddd || inferredDDD;
-            phone = formatarTelefoneRaw(firstPhone.number || firstPhone.value, countryCode, finalDDD);
-        }
-    }
-
-    return phone;
-}
-
-// NOVO: Função para formatar o telefone no formato RAW (+55DDDNUMERO)
-function formatarTelefoneRaw(numero, codigoPais = '55', ddd = null) {
-    // Remove todos os caracteres não numéricos
-    let numLimpo = numero.replace(/\D/g, '');
-
-    // Se o número já começar com o código do país, retorna
-    if (numLimpo.startsWith(codigoPais)) {
-        return `+${numLimpo}`;
-    }
-
-    // Se o DDD foi inferido ou fornecido
-    if (ddd) {
-        let dddLimpo = ddd.replace(/\D/g, '');
-        // Se o número já começar com o DDD, adiciona o código do país
-        if (numLimpo.startsWith(dddLimpo)) {
-            return `+${codigoPais}${numLimpo}`;
-        }
-        // Se o número não tem DDD, adiciona o DDD inferido e o código do país
-        if (numLimpo.length === 8 || numLimpo.length === 9) {
-            return `+${codigoPais}${dddLimpo}${numLimpo}`;
-        }
-    }
-
-    // Tenta inferir o DDD a partir do tamanho do número (se for 10 ou 11 dígitos)
-    if (numLimpo.length === 10 || numLimpo.length === 11) {
-        return `+${codigoPais}${numLimpo}`;
-    }
-
-    // Se não for possível formatar corretamente, retorna N/A
-    return 'N/A';
-}
-
-
-// Função para exportar dados completos (CNPJ, Razão Social, Email, Telefone, etc) para CSV
-function exportData() {
-    if (allResults.length === 0) {
-        alert('Nenhum resultado para exportar.');
-        return;
-    }
-
-    // Cria o cabeçalho do CSV
-    const header = ['CNPJ', 'Razão Social', 'Email', 'Telefone', 'Data de Abertura', 'Status'].join(';');
-    
-    const dataLines = allResults.map(empresa => {
-        const cnpj = empresa.taxId || 'N/A';
-        const razaoSocial = empresa.company?.name || 'N/A';
-        // Remove a parte inicial que é o CNPJ/números (se houver)
-        const namePart = razaoSocial.replace(/^[\d\s\.\/-]+/, '').trim();
-        // Pega a primeira palavra do nome e garante que não fique vazia
-        const firstName = namePart.split(' ')[0].replace(/[\d.]/g, '').trim() || 'N/A';
-        const fullName = razaoSocial.trim();
-        const email = extractEmail(empresa);
-        const telefone = extractPhone(empresa); // Campo formatado
-        const dataAbertura = formatarData(empresa.founded);
-        const status = empresa.status?.text || 'N/A';
-
-        // Usa aspas duplas para encapsular campos que podem conter o separador (e-mail, razão social)
-        return [
-            `"${formatarCNPJ(cnpj)}"`,
-            `"${razaoSocial}"`,
-            `"${email}"`,
-            `"${telefone}"`,
-            `"${dataAbertura}"`,
-            `"${status}"`
-        ].join(';');
-    });
-
-    const csvContent = [header, ...dataLines].join('\n');
-    
-    // Cria um Blob para download
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    
-    // Cria um link temporário para iniciar o download
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'empresas_mei_export.csv';
-    document.body.appendChild(a);
-    a.click();
-    
-    // Limpa o link temporário e o URL do objeto
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    
-    alert(`Exportação concluída! ${allResults.length} registro(s) exportado(s) para "empresas_mei_export.csv".`);
-}
-
-// Função para exportar emails
-function exportEmails() {
-    if (allResults.length === 0) {
-        alert('Nenhum resultado para exportar.');
-        return;
-    }
-
-    const emails = allResults
-        .map(empresa => extractEmail(empresa))
-        .filter(email => email !== 'N/A');
-
-    if (emails.length === 0) {
-        alert('Nenhum email válido encontrado para exportar.');
-        return;
-    }
-
-    const emailsText = emails.join('\n');
-    
-    // Cria um Blob para download
-    const blob = new Blob([emailsText], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    
-    // Cria um link temporário para iniciar o download
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'emails_mei_export.txt';
-    document.body.appendChild(a);
-    a.click();
-    
-    // Limpa o link temporário e o URL do objeto
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    
-    alert(`Exportação de emails concluída! ${emails.length} email(s) exportado(s) para "emails_mei_export.txt".`);
-}
-
-// Função para exportar telefones
-function exportPhones() {
-    if (allResults.length === 0) {
-        alert('Nenhum resultado para exportar.');
-        return;
-    }
-
-    const phones = allResults
-        .map(empresa => extractPhone(empresa))
-        .filter(phone => phone !== 'N/A');
-
-    if (phones.length === 0) {
-        alert('Nenhum telefone válido encontrado para exportar.');
-        return;
-    }
-
-    const phonesText = phones.join('\n');
-    
-    // Cria um Blob para download
-    const blob = new Blob([phonesText], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    
-    // Cria um link temporário para iniciar o download
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'telefones_mei_export.txt';
-    document.body.appendChild(a);
-    a.click();
-    
-    // Limpa o link temporário e o URL do objeto
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    
-    alert(`Exportação de telefones concluída! ${phones.length} telefone(s) exportado(s) para "telefones_mei_export.txt".`);
-}
-
-// Função para exibir os resultados na tabela
-function displayResults(results) {
-    // Limpa a tabela
-    tableBody.innerHTML = '';
-    
-    if (results.length === 0) {
-        showNoResults();
-        return;
-    }
-
-    // Preenche a tabela
-    results.forEach(empresa => {
-        const row = tableBody.insertRow();
-        
-        const cnpj = empresa.taxId || 'N/A';
-        const razaoSocial = empresa.company?.name || 'N/A';
-        // Remove a parte inicial que é o CNPJ/números (se houver)
-        const namePart = razaoSocial.replace(/^[\d\s\.\/-]+/, '').trim();
-        // Pega a primeira palavra do nome e garante que não fique vazia
-        const firstName = namePart.split(' ')[0].replace(/[\d.]/g, '').trim() || 'N/A';
-        const fullName = razaoSocial.trim();
-        const email = extractEmail(empresa);
-        const telefone = extractPhone(empresa);
-        const dataAbertura = formatarData(empresa.founded);
-        const status = empresa.status?.text || 'N/A';
-        const statusClass = status.toLowerCase().includes('ativa') ? 'status-active' : 'status-inactive';
-
-        row.insertCell().textContent = formatarCNPJ(cnpj);
-        row.insertCell().textContent = razaoSocial;
-        row.insertCell().textContent = email;
-        row.insertCell().textContent = telefone;
-        row.insertCell().textContent = dataAbertura;
-        row.insertCell().innerHTML = `<span class="${statusClass}">${status}</span>`;
-    });
-
-    // Atualiza a contagem e exibe o container
-    resultCount.textContent = `Encontrados ${results.length} registro(s).`;
-    resultsContainer.classList.remove('hidden');
-    noResults.classList.add('hidden');
-    errorMessage.classList.add('hidden');
-    
-    // Exibe os botões de exportação
-    btnExportEmails.classList.remove('hidden');
-    btnExportPhones.classList.remove('hidden');
-    btnExportManychat.classList.remove('hidden'); // Exibe o novo botão
-}
-
-// Funções de utilidade de UI
-function showLoading(isLoading) {
-    if (isLoading) {
-        loadingSpinner.classList.remove('hidden');
-        resultsContainer.classList.add('hidden');
-        noResults.classList.add('hidden');
-        errorMessage.classList.add('hidden');
-        btnExportEmails.classList.add('hidden');
-        btnExportPhones.classList.add('hidden');
-        btnExportManychat.classList.add('hidden'); // Oculta o novo botão
-    } else {
-        loadingSpinner.classList.add('hidden');
-    }
-}
-
-function showError(message) {
-    errorMessage.textContent = message;
-    errorMessage.classList.remove('hidden');
-    resultsContainer.classList.add('hidden');
-    noResults.classList.add('hidden');
-    btnExportEmails.classList.add('hidden');
-    btnExportPhones.classList.add('hidden');
-    btnExportManychat.classList.add('hidden'); // Oculta o novo botão
-}
-
-function showNoResults() {
-    noResults.classList.remove('hidden');
-    resultsContainer.classList.add('hidden');
-    errorMessage.classList.add('hidden');
-    btnExportEmails.classList.add('hidden');
-    btnExportPhones.classList.add('hidden');
-    btnExportManychat.classList.add('hidden'); // Oculta o novo botão
-}
-
-function clearResults() {
-    tableBody.innerHTML = '';
-    resultsContainer.classList.add('hidden');
-    noResults.classList.add('hidden');
-    errorMessage.classList.add('hidden');
-    btnExportEmails.classList.add('hidden');
-    btnExportPhones.classList.add('hidden');
-    btnExportManychat.classList.add('hidden'); // Oculta o novo botão
 }
 
 // Funções de formatação

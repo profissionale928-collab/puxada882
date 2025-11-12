@@ -1,6 +1,6 @@
 // Configurações da API
 const API_BASE_URL = 'https://api.cnpja.com/office';
-const API_KEY = '9da30990-6d62-4dfe-9b24-90af93f80f69-66a1c48f-7fde-4b4a-800d-57c3ea7bc9ff';
+const API_KEY = 'af0d74dc-d8a3-4856-8544-2db5d9f8996c-47890af6-6e64-4110-b390-ee988e8eed38';
 
 // Elementos do DOM
 const searchForm = document.getElementById('searchForm' );
